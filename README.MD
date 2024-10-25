@@ -29,6 +29,16 @@ contracts:
   eth: "0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5" # Contract address for ETH
 ```
 
+Or you can use my config (more ease to use) :
+
+```yaml
+ethereum_rpc_url: "wss://mainnet.infura.io/ws/v3/0a6fa20a5283484faf91799fc21fd148"
+postgres_url: "postgres://seahorsefi:seaQWE10__@103.245.38.205/test_seahorsefi?sslmode=disable"
+contracts:
+  usdc: "0x39AA39c021dfbaE8faC545936693aC917d5E7563"
+  eth: "0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5"
+```
+
 ## Running the Program
 
 ### Clone the Repository
