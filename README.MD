@@ -8,6 +8,7 @@ Compound Tracker is an off-chain indexing service built in Golang to track user 
     •	Calculates points based on the amount of tokens and duration (with a 10-minute interval).
     •	Stores results in PostgreSQL.
     •	Provides an HTTP endpoint to retrieve the accumulated points for a specified user address.
+    •	Live URL : https://compound-tracker.bintangmfhd.com/points?address=[yourAddress]
 
 ## Configuration
 
