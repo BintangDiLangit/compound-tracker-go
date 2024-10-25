@@ -62,14 +62,14 @@ The program will connect to Ethereum and PostgreSQL, perform database migrations
     2. Example usage with curl:
 
 ```
-curl "http://localhost:8080/points?address=0xYourEthereumAddress"
+curl "http://localhost:8082/points?address=0xYourEthereumAddress"
 ```
 
 ### Or Run with Docker
 
 ```
 docker build -t compound-tracker .
-docker run -p 8080:8080 compound-tracker
+docker run -p 8082:8082 compound-tracker
 ```
 
 ## Testing
