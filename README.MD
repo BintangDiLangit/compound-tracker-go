@@ -51,7 +51,7 @@ cd compound-tracker-go
 ### Run the Program Localy
 
 ```
-go run main.go
+go run cmd/compound-tracker/main.go
 ```
 
 The program will connect to Ethereum and PostgreSQL, perform database migrations, and start listening for events.
