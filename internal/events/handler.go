@@ -8,12 +8,14 @@ import (
 	"math/big"
 	"os"
 	"strconv"
+	"time"
 
 	"compound-tracker/internal/config"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -30,30 +32,22 @@ func ListenForEvents(client *ethclient.Client, db *sql.DB, cfg *config.Config) {
 		Addresses: []common.Address{usdcAddress, ethAddress},
 		Topics: [][]common.Hash{
 			{
-				common.HexToHash(cfg.HexMint),   // Mint
-				common.HexToHash(cfg.HexBorrow), // Borrow
+				common.HexToHash(cfg.HexMint),
+				common.HexToHash(cfg.HexBorrow),
 			},
 		},
 	}
 
 	// All Topic for Test
-
-	/*
-		latestBlockNumber, err := client.BlockNumber(context.Background())
-		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(int64(latestBlockNumber) - 10000),
-			ToBlock:   nil, // Until the latest block
-		}
-		if err != nil {
-			log.Fatalf("Failed to fetch block number: %v", err)
-		}
-		log.Printf("Current block number: %d", latestBlockNumber)
-
-		query := ethereum.FilterQuery{
-			FromBlock: big.NewInt(int64(latestBlockNumber) - 10000),
-			ToBlock:   nil,
-			Addresses: []common.Address{usdcAddress, ethAddress},
-		}
+	/* latestBlockNumber, err := client.BlockNumber(context.Background())
+	query := ethereum.FilterQuery{
+		FromBlock: big.NewInt(int64(latestBlockNumber) - 10000),
+		ToBlock:   nil, // Until the latest block
+	}
+	if err != nil {
+		log.Fatalf("Failed to fetch block number: %v", err)
+	}
+	log.Printf("Current block number: %d", latestBlockNumber)
 	*/
 
 	logs := make(chan types.Log)
@@ -65,49 +59,85 @@ func ListenForEvents(client *ethclient.Client, db *sql.DB, cfg *config.Config) {
 
 	log.Println("Starting to listen for events...")
 	for {
-		select {
-
-		case err := <-sub.Err():
-			log.Printf("Error: %v", err)
-		case vLog := <-logs:
-			log.Printf("Received log: %+v", vLog)
-			handleEvent(vLog, db, cfg)
-
-			blockNumber := vLog.BlockNumber
-			saveLastProcessedBlock(int64(blockNumber))
+		// Create a new subscription
+		sub, err := client.SubscribeFilterLogs(context.Background(), query, logs)
+		if err != nil {
+			log.Printf("Failed to subscribe to logs: %v. Retrying in 5 seconds...", err)
+			time.Sleep(5 * time.Second)
+			continue
 		}
 
+		for {
+			select {
+			case err := <-sub.Err():
+				log.Printf("Subscription error: %v. Reconnecting...", err)
+				time.Sleep(5 * time.Second)
+				continue
+			case vLog := <-logs:
+				log.Printf("Received log: %+v", vLog)
+				handleEvent(vLog, db, cfg)
+
+				blockNumber := vLog.BlockNumber
+				saveLastProcessedBlock(int64(blockNumber))
+			}
+		}
 	}
 }
 
 func handleEvent(eventLog types.Log, db *sql.DB, cfg *config.Config) {
 	log.Printf("Event received with signature: %s", eventLog.Topics[0].Hex())
 
-	eventName := ""
-	pointsPerUnit := 0
+	eventSignature := eventLog.Topics[0].Hex()
 
-	switch eventLog.Topics[0].Hex() {
+	var eventName string
+	var pointsPerUnit int
+	var tokenType string
+
+	if len(eventLog.Data) < 32 {
+		log.Println("Log data is too short, skipping this log")
+		return
+	}
+
+	switch eventSignature {
 	case cfg.HexMint:
 		eventName = "Mint"
 		pointsPerUnit = 1
+		tokenType = "USDC"
 	case cfg.HexBorrow:
 		eventName = "Borrow"
 		pointsPerUnit = 2
+		tokenType = "ETH"
 	default:
-		eventName = "Others"
-		pointsPerUnit = 3
+		log.Println("Unknown event type, skipping")
+		return
 	}
 
-	amount := new(big.Int).SetBytes(eventLog.Data[:32])
-	points := pointsPerUnit * int(amount.Int64()) * (10 / 10)
+	amount := new(big.Int)
+	amount.SetBytes(eventLog.Data[:32])
 
-	log.Printf("Amount: %s, Points: %d", amount.String(), points)
+	duration := 10
+	points := pointsPerUnit * int(amount.Int64()) * (duration / 10)
 
-	_, err := db.Exec("INSERT INTO user_points (address, points, event) VALUES ($1, $2, $3)",
-		eventLog.Address.Hex(), points, eventName)
+	log.Printf("Event: %s, Amount: %s, Points: %d", eventName, amount.String(), points)
+
+	_, err := db.Exec(`
+	INSERT INTO user_points 
+	(address, points, event, block_number, transaction_hash, log_index, amount, token_type) 
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		eventLog.Address.Hex(),
+		points,
+		eventName,
+		eventLog.BlockNumber,
+		eventLog.TxHash.Hex(),
+		eventLog.Index,
+		amount.String(),
+		tokenType)
 	if err != nil {
 		log.Printf("Failed to insert points: %v", err)
 	}
+
+	logHash := hashLog(eventLog)
+	storeLogHashInDB(db, eventLog.BlockNumber, eventLog.TxHash.Hex(), eventLog.Index, logHash)
 
 }
 
@@ -136,4 +166,18 @@ func saveLastProcessedBlock(blockNumber int64) {
 	if err != nil {
 		log.Printf("Failed to save last processed block: %v", err)
 	}
+}
+
+func storeLogHashInDB(db *sql.DB, blockNumber uint64, txHash string, logIndex uint, logHash []byte) {
+	_, err := db.Exec(`
+        INSERT INTO log_hashes (block_number, transaction_hash, log_index, log_hash) 
+        VALUES ($1, $2, $3, $4)`,
+		blockNumber, txHash, logIndex, logHash)
+	if err != nil {
+		log.Printf("Failed to insert log hash: %v", err)
+	}
+}
+
+func hashLog(eventLog types.Log) []byte {
+	return crypto.Keccak256(eventLog.Data)
 }

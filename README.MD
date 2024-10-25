@@ -90,6 +90,40 @@ CREATE TABLE user_points (
 );
 ```
 
+## Bonus Point Handling
+
+This section outlines how the implemented system addresses the bonus challenges provided in the task:
+
+### 1. What if the Server Goes Down? How Should We Replay the Transactions?
+
+Solution:
+
+- The system is designed to persist the last processed block number in a file (last_block.txt) after each successful log processing. This allows the system to replay any missed transactions after the server goes down.
+- Upon restarting, the system reads the last processed block from last_block.txt and continues processing logs starting from that block. This ensures no events are missed, even during server downtime.
+
+### 2. What if the Node/Connection is Down?
+
+Solution:
+
+- The system incorporates an automatic reconnection mechanism in case the connection to the Ethereum node (e.g., Infura) goes down.
+- If the node or connection drops, the system logs the error and then waits for 5 seconds before retrying the connection. This retry mechanism ensures that the connection is re-established and event processing resumes automatically without manual intervention
+
+## 3. How to Maximize Uptime to Listen to Events?
+
+Solution:
+The system is built to maximize uptime through the following strategies:
+
+- Automatic Reconnection: As described above, if the Ethereum node or network connection goes down, the system automatically retries to reconnect without manual intervention.
+- Last Processed Block Persistence: By saving the last processed block, the system ensures that no logs are missed even during downtime. The logs are processed starting from the last saved block upon reconnection.
+- Multiple Instances for Redundancy (optional): For further resilience, you can deploy multiple instances of the service across different servers or regions. This allows for high availability, as one instance can take over if another goes down.
+
+## 4. Is There a Way We Can Prove We Indexed the Points Honestly? [Brevis Co-Processor]
+
+Solution:
+
+- To ensure transparency and verifiability, you can leverage Merkle Trees to cryptographically prove that the events have been indexed honestly.
+- For each log processed, a hash of the log can be stored in a Merkle Tree. At regular intervals (e.g., daily), the Merkle Root can be published to an external verifier or even stored on-chain to provide a tamper-proof record of the processed logs.
+
 ## Notes
 
 - This project uses Infura to listen for events on the Ethereum Mainnet.
