@@ -1,11 +1,10 @@
-module compund-tracker
+module compound-tracker
 
-go 1.22.0
-
-toolchain go1.22.8
+go 1.22.8
 
 require (
 	github.com/ethereum/go-ethereum v1.14.11
+	github.com/golang-migrate/migrate/v4 v4.18.1
 	github.com/lib/pq v1.10.9
 	gopkg.in/yaml.v2 v2.4.0
 )
@@ -24,7 +23,6 @@ require (
 	github.com/ethereum/c-kzg-4844 v1.0.0 // indirect
 	github.com/ethereum/go-verkle v0.1.1-0.20240829091221-dffa7562dbe9 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/golang-migrate/migrate/v4 v4.18.1 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect

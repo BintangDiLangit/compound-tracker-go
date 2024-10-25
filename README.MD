@@ -69,7 +69,7 @@ curl "http://localhost:8082/points?address=0xYourEthereumAddress"
 
 ```
 docker build -t compound-tracker .
-docker run -d -p 8082:8080 compound-tracker
+docker run -d -p 8082:8082 compound-tracker
 ```
 
 ## Testing
