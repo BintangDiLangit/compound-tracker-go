@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Build the app
-RUN go build -o main .
+RUN go build -o main cmd/compound-tracker/main.go
 
 # Expose port for HTTP server
 EXPOSE 8082
