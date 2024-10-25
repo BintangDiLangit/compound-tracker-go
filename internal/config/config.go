@@ -14,6 +14,8 @@ type Config struct {
 		USDC string `yaml:"usdc"`
 		ETH  string `yaml:"eth"`
 	} `yaml:"contracts"`
+	HexMint   string `yaml:"hex_mint"`
+	HexBorrow string `yaml:"hex_borrow"`
 }
 
 func LoadConfig(configFile string) (*Config, error) {
