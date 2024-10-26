@@ -2,6 +2,7 @@ package config
 
 import (
 	"log"
+	"math/big"
 	"os"
 
 	"gopkg.in/yaml.v2"
@@ -14,22 +15,33 @@ type Config struct {
 		USDC string `yaml:"usdc"`
 		ETH  string `yaml:"eth"`
 	} `yaml:"contracts"`
-	HexMint   string `yaml:"hex_mint"`
-	HexBorrow string `yaml:"hex_borrow"`
+	HexMint     string `yaml:"hex_mint"`
+	HexBorrow   string `yaml:"hex_borrow"`
+	HexTransfer string `yaml:"hex_transfer"`
 }
 
-func LoadConfig(configFile string) (*Config, error) {
-	var cfg Config
-	data, err := os.ReadFile(configFile)
+type EventDetails struct {
+	Name          string
+	PointsPerUnit *big.Int
+	Amount        *big.Int
+	Address       string
+	BlockNumber   uint64
+	TxHash        string
+	LogIndex      uint
+}
+
+func Load() (*Config, error) {
+	data, err := os.ReadFile("config.yaml")
 	if err != nil {
-		log.Fatalf("Failed to read config file: %v", err)
 		return nil, err
 	}
 
+	var cfg Config
 	err = yaml.Unmarshal(data, &cfg)
 	if err != nil {
-		log.Fatalf("Failed to parse config file: %v", err)
 		return nil, err
 	}
+
+	log.Println("Configuration loaded successfully.")
 	return &cfg, nil
 }
