@@ -1,6 +1,6 @@
 # Compound Tracker in Go
 
-Compound Tracker is an off-chain indexing service built in Golang to track user interactions with the Compound protocol on Ethereum. The service listens for Mint and Borrow events for USDC and ETH tokens, calculates points based on token amounts and time duration, and stores the results in a PostgreSQL database.
+Compound Tracker is an off-chain indexing service built in Golang to track user interactions with the Compound protocol on Ethereum. The service listens for Mint and Borrow events for ETH tokens, calculates points based on token amounts and time duration, and stores the results in a PostgreSQL database.
 
 ## Features
 
@@ -26,8 +26,10 @@ Create a config.yaml file in the project root with the following format:
 ethereum_rpc_url: "wss://mainnet.infura.io/ws/v3/YOUR_INFURA_PROJECT_ID"
 postgres_url: "postgres://USER:PASSWORD@HOST/DATABASE?sslmode=disable"
 contracts:
-  usdc: "0x39AA39c021dfbaE8faC545936693aC917d5E7563" # Contract address for USDC
   eth: "0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5" # Contract address for ETH
+hex_mint: " 0x4c209b5fc8ad50758f13e2e1088ba56a560dff690a1c6fef26394f4c03821c4f"
+hex_borrow: "0x13ed6866d4e1ee6da46f845c46d7e54120883d75c5ea9a2dacc1c4ca8984ab80"
+hex_transfer: "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 ```
 
 Or you can use my config (more ease to use) :
@@ -36,8 +38,10 @@ Or you can use my config (more ease to use) :
 ethereum_rpc_url: "wss://mainnet.infura.io/ws/v3/0a6fa20a5283484faf91799fc21fd148"
 postgres_url: "postgres://seahorsefi:seaQWE10__@103.245.38.205/test_seahorsefi?sslmode=disable"
 contracts:
-  usdc: "0x39AA39c021dfbaE8faC545936693aC917d5E7563"
   eth: "0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5"
+hex_mint: " 0x4c209b5fc8ad50758f13e2e1088ba56a560dff690a1c6fef26394f4c03821c4f"
+hex_borrow: "0x13ed6866d4e1ee6da46f845c46d7e54120883d75c5ea9a2dacc1c4ca8984ab80"
+hex_transfer: "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 ```
 
 ## Running the Program

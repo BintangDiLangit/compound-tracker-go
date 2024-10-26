@@ -12,8 +12,7 @@ type Config struct {
 	EthereumRPCURL string `yaml:"ethereum_rpc_url"`
 	PostgresURL    string `yaml:"postgres_url"`
 	Contracts      struct {
-		USDC string `yaml:"usdc"`
-		ETH  string `yaml:"eth"`
+		ETH string `yaml:"eth"`
 	} `yaml:"contracts"`
 	HexMint     string `yaml:"hex_mint"`
 	HexBorrow   string `yaml:"hex_borrow"`
