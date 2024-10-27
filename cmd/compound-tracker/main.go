@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
+	"runtime"
 
 	"github.com/BintangDiLangit/compound-tracker/internal/api"
 	"github.com/BintangDiLangit/compound-tracker/internal/config"
@@ -13,9 +15,14 @@ import (
 	_ "github.com/lib/pq"
 )
 
+func getProjectRoot() string {
+	_, b, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(b), "../..")
+}
+
 func main() {
 	// Load config
-	cfg, err := config.Load()
+	cfg, err := config.Load(filepath.Join(getProjectRoot(), "config.yaml"))
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}

@@ -57,7 +57,3 @@ func Close() {
 		}
 	}
 }
-
-func GetDB() *sql.DB {
-	return database
-}

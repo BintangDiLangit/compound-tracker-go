@@ -49,7 +49,7 @@ func ListenForEvents(client *ethclient.Client, db *sql.DB, cfg *config.Config) {
 			time.Sleep(5 * time.Second)
 			sub, _ = client.SubscribeFilterLogs(context.Background(), query, logs)
 		case vLog := <-logs:
-			handleEvent(vLog, db, cfg)
+			HandleEvent(vLog, client, db, cfg)
 			utils.SaveLastProcessedBlock(int64(vLog.BlockNumber))
 		}
 	}

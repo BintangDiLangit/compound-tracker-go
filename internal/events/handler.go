@@ -1,17 +1,20 @@
 package events
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"math"
 	"math/big"
+	"time"
 
 	"github.com/BintangDiLangit/compound-tracker/internal/config"
 	"github.com/BintangDiLangit/compound-tracker/internal/db"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-func handleEvent(eventLog types.Log, database *sql.DB, cfg *config.Config) {
+func HandleEvent(eventLog types.Log, client *ethclient.Client, database *sql.DB, cfg *config.Config) {
 
 	if len(eventLog.Topics) == 0 {
 		log.Println("Event log does not contain any topics, skipping this log.")
@@ -29,53 +32,39 @@ func handleEvent(eventLog types.Log, database *sql.DB, cfg *config.Config) {
 
 	var amount *big.Int
 
-	// Handle different event types - Transfer (Optional - For Test), Mint, Borrow
-	switch eventName {
-	case "Transfer":
-		// Transfer just for testing because mint & borrow very rarely
-		if len(eventLog.Topics) < 3 {
-			log.Println("Transfer event missing amount topic")
-			return
-		}
+	if len(eventLog.Data) < 32 {
+		log.Println("Event data too short")
+		return
+	}
+	/*
+		The value (amount) is stored in Data because the parameter is not indexed
+		and is a slice of bytes that takes the first 32 bytes of data.
+		This is because in Ethereum, each parameter/value
+		is stored in a 32 byte (256 bit) chunk.
 
-		/*
-			The value (amount) is stored in Topic[2] because
-			- Topics[0] = event signature/hash
-			- Topics[1] = from address (indexed)
-			- Topics[2] = to address (indexed)
-			- Topics[3] = value/amount (indexed)
-		*/
-		amount = new(big.Int).SetBytes(eventLog.Topics[2].Bytes())
+		ex. for borrow event
+		Data = [
+			32 bytes (amount)     → Data[:32]
+			32 bytes (mintTokens) → Data[32:64]
+		]
 
-	default:
+		ex. for mint event
+		Data = [
+			32 bytes (amount)     → Data[:32]
+			32 bytes (mintTokens) → Data[32:64]
+		]
+	*/
+	amount = new(big.Int).SetBytes(eventLog.Data[:32])
 
-		// For Mint and Borrow events
-		if len(eventLog.Data) < 32 {
-			log.Println("Event data too short")
-			return
-		}
-		/*
-			The value (amount) is stored in Data because the parameter is not indexed
-			and is a slice of bytes that takes the first 32 bytes of data.
-			This is because in Ethereum, each parameter/value
-			is stored in a 32 byte (256 bit) chunk.
-
-			ex. for borrow event
-			Data = [
-				32 bytes (amount)     → Data[:32]
-				32 bytes (mintTokens) → Data[32:64]
-			]
-
-			ex. for mint event
-			Data = [
-				32 bytes (amount)     → Data[:32]
-				32 bytes (mintTokens) → Data[32:64]
-			]
-		*/
-		amount = new(big.Int).SetBytes(eventLog.Data[:32])
+	block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(eventLog.BlockNumber)))
+	if err != nil {
+		log.Printf("Failed to fetch block timestamp: %v", err)
+		return
 	}
 
-	points := calculatePoints(pointsPerUnit, amount)
+	timestamp := time.Unix(int64(block.Time()), 0)
+
+	points := CalculatePoints(pointsPerUnit, amount, timestamp)
 
 	db.InsertUserPoints(database, eventLog, points, eventName)
 }
@@ -86,24 +75,30 @@ func getEventInfo(eventSignature string, cfg *config.Config) (string, int) {
 		return "Mint", 1
 	case cfg.HexBorrow:
 		return "Borrow", 2
-	// case cfg.HexTransfer: // transfer just for testing
-	// 	return "Transfer", 0
 	default:
 		return "", 0
 	}
 }
 
-func calculatePoints(pointsPerUnit int, amount *big.Int) int64 {
-	// Convert to ETH first (divide by 10^18)
+func CalculatePoints(pointsPerUnit int, amount *big.Int, timestamp time.Time) int64 {
+
+	intervalDuration := 10
+	duration := time.Since(timestamp)
+	durationMinutes := int(duration.Minutes())
+
+	intervals := int64(durationMinutes / intervalDuration)
+
+	// Convert to ETH (divide by 10^18)
 	divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 	ethAmount := new(big.Int).Div(amount, divisor)
 
 	log.Println("===================")
 	log.Println("Original Wei:", amount.String())
 	log.Println("In ETH:", ethAmount.String())
-	log.Println("Points multiplier:", pointsPerUnit)
+	log.Println("Duration in minutes:", durationMinutes)
+	log.Println("Intervals (10-minute):", intervals)
+	log.Println("Points multiplier per unit:", pointsPerUnit)
 
-	// Check if amount would overflow int64
 	maxInt64 := big.NewInt(math.MaxInt64)
 	if ethAmount.Cmp(maxInt64) > 0 {
 		log.Println("Amount too large, skipping transaction")
@@ -116,7 +111,7 @@ func calculatePoints(pointsPerUnit int, amount *big.Int) int64 {
 		return 0
 	}
 
-	finalPoints := points * int64(pointsPerUnit)
+	finalPoints := points * intervals * int64(pointsPerUnit)
 	if finalPoints < 0 {
 		log.Println("Points calculation overflow, skipping transaction")
 		return 0
