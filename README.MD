@@ -59,6 +59,12 @@ cd compound-tracker-go
 go run cmd/compound-tracker/main.go
 ```
 
+#### Testing
+
+```
+go test -v ./test/integrations/...
+```
+
 The program will connect to Ethereum and PostgreSQL, perform database migrations, and start listening for events.
 
 ### HTTP Endpoint:
