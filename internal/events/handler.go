@@ -6,16 +6,60 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/BintangDiLangit/compound-tracker/internal/config"
 	"github.com/BintangDiLangit/compound-tracker/internal/db"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-func HandleEvent(eventLog types.Log, client *ethclient.Client, database *sql.DB, cfg *config.Config) {
+var contractABI abi.ABI
 
+// Definisikan struct untuk event
+type MintEvent struct {
+	Account     common.Address
+	Amount      *big.Int
+	TotalSupply *big.Int
+}
+
+func init() {
+	const contractABIString = `[
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "name": "account",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "name": "amount",
+              "type": "uint256"
+            },
+            {
+              "indexed": false,
+              "name": "totalSupply",
+              "type": "uint256"
+            }
+          ],
+          "name": "Mint",
+          "type": "event"
+        }
+    ]`
+
+	var err error
+	contractABI, err = abi.JSON(strings.NewReader(contractABIString))
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func HandleEvent(eventLog types.Log, client *ethclient.Client, database *sql.DB, cfg *config.Config) {
 	if len(eventLog.Topics) == 0 {
 		log.Println("Event log does not contain any topics, skipping this log.")
 		return
@@ -30,31 +74,22 @@ func HandleEvent(eventLog types.Log, client *ethclient.Client, database *sql.DB,
 
 	log.Println("event name " + eventName)
 
-	var amount *big.Int
+	// Debug logging
+	log.Printf("Event Topics: %v", eventLog.Topics)
+	log.Printf("Event Data length: %d", len(eventLog.Data))
+	log.Printf("Raw Event Data: %x", eventLog.Data)
 
-	if len(eventLog.Data) < 32 {
-		log.Println("Event data too short")
+	// Unpack event data
+	event := new(MintEvent)
+	err := contractABI.UnpackIntoInterface(event, "Mint", eventLog.Data)
+	if err != nil {
+		log.Printf("Failed to unpack event: %v", err)
 		return
 	}
-	/*
-		The value (amount) is stored in Data because the parameter is not indexed
-		and is a slice of bytes that takes the first 32 bytes of data.
-		This is because in Ethereum, each parameter/value
-		is stored in a 32 byte (256 bit) chunk.
 
-		ex. for borrow event
-		Data = [
-			32 bytes (amount)     → Data[:32]
-			32 bytes (mintTokens) → Data[32:64]
-		]
-
-		ex. for mint event
-		Data = [
-			32 bytes (amount)     → Data[:32]
-			32 bytes (mintTokens) → Data[32:64]
-		]
-	*/
-	amount = new(big.Int).SetBytes(eventLog.Data[:32])
+	// Debug print unpacked data
+	log.Printf("Unpacked Amount: %s", event.Amount.String())
+	log.Printf("Unpacked TotalSupply: %s", event.TotalSupply.String())
 
 	block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(eventLog.BlockNumber)))
 	if err != nil {
@@ -63,9 +98,7 @@ func HandleEvent(eventLog types.Log, client *ethclient.Client, database *sql.DB,
 	}
 
 	timestamp := time.Unix(int64(block.Time()), 0)
-
-	points := CalculatePoints(pointsPerUnit, amount, timestamp)
-
+	points := CalculatePoints(pointsPerUnit, event.Amount, timestamp)
 	db.InsertUserPoints(database, eventLog, points, eventName)
 }
 
