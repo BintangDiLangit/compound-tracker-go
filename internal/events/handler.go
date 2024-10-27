@@ -19,7 +19,6 @@ import (
 
 var contractABI abi.ABI
 
-// Definisikan struct untuk event
 type MintEvent struct {
 	Account     common.Address
 	Amount      *big.Int
