@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS user_points (
     transaction_hash TEXT NOT NULL,
     log_index INTEGER NOT NULL,
     amount TEXT NOT NULL,
+    original_amount TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     UNIQUE(transaction_hash, log_index)
 );

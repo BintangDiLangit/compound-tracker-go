@@ -26,7 +26,7 @@ func Connect(postgresURL string) (*sql.DB, error) {
 	return db, nil
 }
 
-func InsertUserPoints(db *sql.DB, eventLog types.Log, points int64, eventName string) {
+func InsertUserPoints(db *sql.DB, eventLog types.Log, points int64, eventName string, oriAmount string, amount string, duration int) {
 	if db == nil {
 		log.Println("Database connection is nil")
 		return
@@ -34,15 +34,18 @@ func InsertUserPoints(db *sql.DB, eventLog types.Log, points int64, eventName st
 
 	_, err := db.Exec(`
 		INSERT INTO user_points 
-		(address, points, event, block_number, transaction_hash, log_index, amount) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		(address, points, event, block_number, transaction_hash, log_index, original_amount, amount, duration_minutes) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		eventLog.Address.Hex(),
 		points,
 		eventName,
 		eventLog.BlockNumber,
 		eventLog.TxHash.Hex(),
 		eventLog.Index,
-		"0")
+		oriAmount,
+		amount,
+		duration,
+	)
 	if err != nil {
 		log.Printf("Failed to insert points: %v", err)
 	}

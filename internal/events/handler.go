@@ -21,34 +21,62 @@ var contractABI abi.ABI
 
 type MintEvent struct {
 	Account     common.Address
-	Amount      *big.Int
-	TotalSupply *big.Int
+	Amount      *big.Int `abi:"amount"`
+	TotalSupply *big.Int `abi:"totalSupply"`
+}
+
+type BorrowEvent struct {
+	Account     common.Address
+	Amount      *big.Int `abi:"amount"`
+	TotalSupply *big.Int `abi:"totalSupply"`
 }
 
 func init() {
 	const contractABIString = `[
         {
-          "anonymous": false,
-          "inputs": [
-            {
-              "indexed": true,
-              "name": "account",
-              "type": "address"
-            },
-            {
-              "indexed": false,
-              "name": "amount",
-              "type": "uint256"
-            },
-            {
-              "indexed": false,
-              "name": "totalSupply",
-              "type": "uint256"
-            }
-          ],
-          "name": "Mint",
-          "type": "event"
-        }
+			"anonymous": false,
+			"inputs": [
+				{
+				"indexed": true,
+				"name": "account",
+				"type": "address"
+				},
+				{
+				"indexed": false,
+				"name": "amount",
+				"type": "uint256"
+				},
+				{
+				"indexed": false,
+				"name": "totalSupply",
+				"type": "uint256"
+				}
+			],
+			"name": "Mint",
+			"type": "event"
+        },
+		{
+			"anonymous": false,
+			"inputs": [
+				{
+				"indexed": true,
+				"name": "account",
+				"type": "address"
+				},
+				{
+				"indexed": false,
+				"name": "amount",
+				"type": "uint256"
+				},
+				{
+				"indexed": false,
+				"name": "totalSupply",
+				"type": "uint256"
+				}
+			],
+			"name": "Borrow",
+			"type": "event"
+		}
     ]`
 
 	var err error
@@ -60,35 +88,50 @@ func init() {
 
 func HandleEvent(eventLog types.Log, client *ethclient.Client, database *sql.DB, cfg *config.Config) {
 	if len(eventLog.Topics) == 0 {
-		log.Println("Event log does not contain any topics, skipping this log.")
+		// log.Println("Event log does not contain any topics, skipping this log.")
 		return
 	}
 
 	eventSignature := eventLog.Topics[0].Hex()
 	eventName, pointsPerUnit := getEventInfo(eventSignature, cfg)
 	if eventName == "" {
-		log.Println("Transaction hash for skipped event: " + eventLog.TxHash.Hex())
+		// log.Println("Transaction hash for skipped event: " + eventLog.TxHash.Hex())
 		return
 	}
 
-	log.Println("event name " + eventName)
-
-	// Debug logging
-	log.Printf("Event Topics: %v", eventLog.Topics)
-	log.Printf("Event Data length: %d", len(eventLog.Data))
-	log.Printf("Raw Event Data: %x", eventLog.Data)
+	log.Println("Event Name " + eventName)
 
 	// Unpack event data
-	event := new(MintEvent)
-	err := contractABI.UnpackIntoInterface(event, "Mint", eventLog.Data)
-	if err != nil {
-		log.Printf("Failed to unpack event: %v", err)
-		return
+	var weiAmount *big.Int
+	if eventName == "Borrow" {
+		event := new(BorrowEvent)
+		err := contractABI.UnpackIntoInterface(event, "Borrow", eventLog.Data)
+		if err != nil {
+			log.Printf("Failed to unpack event: %v", err)
+			// Fallback method if fail
+			if len(eventLog.Data) >= 32 {
+				weiAmount = new(big.Int).SetBytes(eventLog.Data[:32])
+			}
+		} else {
+			weiAmount = event.Amount
+		}
+	} else if eventName == "Mint" {
+		event := new(MintEvent)
+		err := contractABI.UnpackIntoInterface(event, "Mint", eventLog.Data)
+		if err != nil {
+			log.Printf("Failed to unpack event: %v", err)
+			if len(eventLog.Data) >= 32 {
+				weiAmount = new(big.Int).SetBytes(eventLog.Data[:32])
+			}
+		} else {
+			weiAmount = event.Amount
+		}
 	}
 
-	// Debug print unpacked data
-	log.Printf("Unpacked Amount: %s", event.Amount.String())
-	log.Printf("Unpacked TotalSupply: %s", event.TotalSupply.String())
+	if weiAmount == nil || weiAmount.Sign() == 0 {
+		log.Printf("Invalid or zero amount for event %s", eventName)
+		return
+	}
 
 	block, err := client.BlockByNumber(context.Background(), big.NewInt(int64(eventLog.BlockNumber)))
 	if err != nil {
@@ -97,8 +140,20 @@ func HandleEvent(eventLog types.Log, client *ethclient.Client, database *sql.DB,
 	}
 
 	timestamp := time.Unix(int64(block.Time()), 0)
-	points := CalculatePoints(pointsPerUnit, event.Amount, timestamp)
-	db.InsertUserPoints(database, eventLog, points, eventName)
+
+	intervalDuration := 10
+	duration := time.Since(timestamp)
+	durationMinutes := int(duration.Minutes())
+
+	intervals := int64(durationMinutes / intervalDuration)
+
+	divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+	ethAmount := new(big.Int).Div(weiAmount, divisor)
+
+	points := CalculatePoints(pointsPerUnit, weiAmount, ethAmount, timestamp, durationMinutes, int64(intervals),
+		duration)
+
+	db.InsertUserPoints(database, eventLog, points, eventName, weiAmount.String(), ethAmount.String(), durationMinutes)
 }
 
 func getEventInfo(eventSignature string, cfg *config.Config) (string, int) {
@@ -112,24 +167,21 @@ func getEventInfo(eventSignature string, cfg *config.Config) (string, int) {
 	}
 }
 
-func CalculatePoints(pointsPerUnit int, amount *big.Int, timestamp time.Time) int64 {
-
-	intervalDuration := 10
-	duration := time.Since(timestamp)
-	durationMinutes := int(duration.Minutes())
-
-	intervals := int64(durationMinutes / intervalDuration)
-
-	// Convert to ETH (divide by 10^18)
-	divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-	ethAmount := new(big.Int).Div(amount, divisor)
+func CalculatePoints(pointsPerUnit int, weiAmount *big.Int, ethAmount *big.Int,
+	timestamp time.Time, durationMinutes int, intervals int64, duration time.Duration) int64 {
 
 	log.Println("===================")
-	log.Println("Original Wei:", amount.String())
+	// Reference time in go
+	log.Printf("Transaction Time: %v", timestamp.Format("2006-01-02 15:04:05"))
+	log.Printf("Current Time: %v", time.Now().Format("2006-01-02 15:04:05"))
+
+	log.Printf("Time Difference: %v", duration.Round(time.Second))
+	log.Println("Original Wei:", weiAmount.String())
 	log.Println("In ETH:", ethAmount.String())
 	log.Println("Duration in minutes:", durationMinutes)
 	log.Println("Intervals (10-minute):", intervals)
 	log.Println("Points multiplier per unit:", pointsPerUnit)
+	log.Println("===================")
 
 	maxInt64 := big.NewInt(math.MaxInt64)
 	if ethAmount.Cmp(maxInt64) > 0 {

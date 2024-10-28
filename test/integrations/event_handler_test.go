@@ -107,38 +107,92 @@ func TestHandleEvent(t *testing.T) {
 }
 
 func makeTestData(amount *big.Int) []byte {
-	data := make([]byte, 32)
-	amount.FillBytes(data)
+	// Generate sample totalSupply
+	totalSupply := new(big.Int).Mul(amount, big.NewInt(2))
+
+	// Create combined data
+	data := make([]byte, 64) // 32 bytes for amount + 32 bytes for totalSupply
+
+	// Fill amount (right-aligned in first 32 bytes)
+	amountBytes := amount.Bytes()
+	copy(data[32-len(amountBytes):32], amountBytes)
+
+	// Fill totalSupply (right-aligned in second 32 bytes)
+	totalSupplyBytes := totalSupply.Bytes()
+	copy(data[64-len(totalSupplyBytes):64], totalSupplyBytes)
+
 	return data
 }
 
 func TestCalculatePoints(t *testing.T) {
 	tests := []struct {
-		name          string
-		pointsPerUnit int
-		amount        *big.Int
-		timestamp     time.Time
-		want          int64
+		name            string
+		pointsPerUnit   int
+		weiAmount       *big.Int
+		ethAmount       *big.Int
+		timestamp       time.Time
+		durationMinutes int
+		intervals       int64
+		duration        time.Duration
+		want            int64
 	}{
 		{
-			name:          "Mint Points",
-			pointsPerUnit: 1,
-			amount:        big.NewInt(1e18), // 1 ETH
-			timestamp:     time.Now().Add(-20 * time.Minute),
-			want:          2,
+			name:            "Mint Points",
+			pointsPerUnit:   1,
+			weiAmount:       big.NewInt(1e18), // 1 ETH in wei
+			ethAmount:       big.NewInt(1),    // 1 ETH
+			timestamp:       time.Now().Add(-20 * time.Minute),
+			durationMinutes: 20,
+			intervals:       2, // 20 minutes = 2 intervals
+			duration:        20 * time.Minute,
+			want:            2, // 2 intervals * 1 point * 1 ETH
 		},
 		{
-			name:          "Borrow Points",
-			pointsPerUnit: 2,
-			amount:        big.NewInt(1e18), // 1 ETH
-			timestamp:     time.Now().Add(-30 * time.Minute),
-			want:          6,
+			name:            "Borrow Points",
+			pointsPerUnit:   2,
+			weiAmount:       big.NewInt(1e18), // 1 ETH in wei
+			ethAmount:       big.NewInt(1),    // 1 ETH
+			timestamp:       time.Now().Add(-30 * time.Minute),
+			durationMinutes: 30,
+			intervals:       3, // 30 minutes = 3 intervals
+			duration:        30 * time.Minute,
+			want:            6, // 3 intervals * 2 points * 1 ETH
+		},
+		{
+			name:            "Zero Points - Recent Transaction",
+			pointsPerUnit:   1,
+			weiAmount:       big.NewInt(1e18),
+			ethAmount:       big.NewInt(1),
+			timestamp:       time.Now().Add(-5 * time.Minute),
+			durationMinutes: 5,
+			intervals:       0, // Less than 10 minutes = 0 intervals
+			duration:        5 * time.Minute,
+			want:            0,
+		},
+		{
+			name:            "Large Amount Points",
+			pointsPerUnit:   1,
+			weiAmount:       big.NewInt(2e18), // 2 ETH in wei
+			ethAmount:       big.NewInt(2),    // 2 ETH
+			timestamp:       time.Now().Add(-40 * time.Minute),
+			durationMinutes: 40,
+			intervals:       4, // 40 minutes = 4 intervals
+			duration:        40 * time.Minute,
+			want:            8, // 4 intervals * 1 point * 2 ETH
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := events.CalculatePoints(tt.pointsPerUnit, tt.amount, tt.timestamp)
+			got := events.CalculatePoints(
+				tt.pointsPerUnit,
+				tt.weiAmount,
+				tt.ethAmount,
+				tt.timestamp,
+				tt.durationMinutes,
+				tt.intervals,
+				tt.duration,
+			)
 			assert.Equal(t, tt.want, got)
 		})
 	}
